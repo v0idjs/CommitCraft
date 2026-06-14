@@ -6,6 +6,7 @@ node_modules/
 # Build output
 dist/
 out/
+build/
 
 # Electron
 release/
@@ -69,3 +70,4 @@ prd.md
 AGENTS.md
 .specify/
 .opencode/
+.speckit/
