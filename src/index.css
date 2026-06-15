@@ -1,0 +1,49 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Playfair+Display:ital,wght@0,400;0,600;1,400;1,600&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Playfair Display", Georgia, Cambria, serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+/* Custom scrollbars for rich log cards and listings */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: #EBEAE7;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #141414;
+  border-radius: 0px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #333333;
+}
+
+/* Base resets & focus states */
+body {
+  @apply bg-[#E4E3E0] text-[#141414] font-sans antialiased selection:bg-[#141414] selection:text-[#E4E3E0];
+}
+
+.neo-shadow-sm {
+  box-shadow: 2px 2px 0px #141414;
+}
+
+.neo-shadow {
+  box-shadow: 4px 4px 0px #141414;
+}
+
+.neo-shadow-lg {
+  box-shadow: 6px 6px 0px #141414;
+}
+
+.neo-shadow-indigo {
+  box-shadow: 4px 4px 0px #4f46e5;
+}
+

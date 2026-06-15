@@ -1,0 +1,6 @@
+{
+  "name": "CommitCraft",
+  "description": "AI-Powered Git Commit & Pull Request Generator. Elevate your Git history with perfect, professional commits and pull requests.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
