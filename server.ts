@@ -35,6 +35,22 @@ async function initDb() {
       commitType TEXT NOT NULL
     )
   `);
+  
+  // Migration checks for multi-provider schema extension
+  try {
+    await db.exec(`ALTER TABLE generations ADD COLUMN provider TEXT`);
+    console.log("Migration: Added provider column.");
+  } catch (err) {
+    // Column already exists, safe to ignore
+  }
+
+  try {
+    await db.exec(`ALTER TABLE generations ADD COLUMN model TEXT`);
+    console.log("Migration: Added model column.");
+  } catch (err) {
+    // Column already exists, safe to ignore
+  }
+
   console.log("Database initialized successfully.");
 }
 
@@ -65,17 +81,61 @@ function getGeminiClient(): GoogleGenAI {
 // 1. Health check & Config status
 app.get("/api/config", (req, res) => {
   const apiKey = process.env.GEMINI_API_KEY;
-  const hasApiKey = !!apiKey && apiKey !== "MY_GEMINI_API_KEY";
+  const openAiKey = process.env.OPENAI_API_KEY;
+  const anthropicKey = process.env.ANTHROPIC_API_KEY;
+
+  const hasApiKey = !!apiKey && apiKey !== "MY_GEMINI_API_KEY" && apiKey !== "";
+  const hasOpenAiKey = !!openAiKey && openAiKey !== "MY_OPENAI_API_KEY" && openAiKey !== "";
+  const hasAnthropicKey = !!anthropicKey && anthropicKey !== "MY_ANTHROPIC_API_KEY" && anthropicKey !== "";
+  const localLlmUrl = process.env.LOCAL_LLM_URL || "http://localhost:11434/v1";
+
   res.json({
     hasApiKey,
+    hasOpenAiKey,
+    hasAnthropicKey,
+    localLlmUrl,
     appUrl: process.env.APP_URL || "http://localhost:3000",
   });
 });
 
-// 2. Generate Commit Details and Title via Gemini API
+// Helper function to extract and parse JSON from varied LLM provider outputs
+function parseJsonResponse(rawText: string): any {
+  let cleanText = rawText.trim();
+  
+  // Strip markdown wraps if present
+  if (cleanText.includes("```json")) {
+    const startIdx = cleanText.indexOf("```json") + 7;
+    const endIdx = cleanText.lastIndexOf("```");
+    if (endIdx > startIdx) {
+      cleanText = cleanText.substring(startIdx, endIdx).trim();
+    }
+  } else if (cleanText.includes("```")) {
+    const startIdx = cleanText.indexOf("```") + 3;
+    const endIdx = cleanText.lastIndexOf("```");
+    if (endIdx > startIdx) {
+      cleanText = cleanText.substring(startIdx, endIdx).trim();
+    }
+  }
+  
+  // Extract content between first '{' and last '}'
+  const firstBrace = cleanText.indexOf("{");
+  const lastBrace = cleanText.lastIndexOf("}");
+  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+    cleanText = cleanText.substring(firstBrace, lastBrace + 1);
+  }
+
+  try {
+    return JSON.parse(cleanText);
+  } catch (err: any) {
+    console.error("Failed to parse JSON payload. Original response text was:", rawText);
+    throw new Error(`The model response did not return a valid JSON structure. Received: ${rawText.substring(0, 150)}...`);
+  }
+}
+
+// 2. Generate Commit Details and Title via Selected Provider and Model APIs
 app.post("/api/generate", async (req, res) => {
   try {
-    const { inputText, format, length, language } = req.body;
+    const { inputText, format, length, language, provider, model } = req.body;
 
     if (!inputText || typeof inputText !== "string" || !inputText.trim()) {
       return res.status(400).json({ error: "Input text is required." });
@@ -84,9 +144,8 @@ app.post("/api/generate", async (req, res) => {
     const commitFormat = format === "conventional" ? "Conventional" : "Standard";
     const descLength = length || "medium";
     const targetLang = language || "English";
-
-    // Obtain client lazily
-    const ai = getGeminiClient();
+    const selectedProvider = provider || "gemini";
+    const selectedModel = model || "gemini-3.5-flash";
 
     const systemInstruction = `You are "CommitCraft", a highly professional Git Commit & Pull Request generator.
 Analyze the user's manual change summaries or AI coding assistant outputs.
@@ -122,56 +181,183 @@ Style Preference: ${commitFormat} Format
 Description Length Preference: ${descLength}
 Language Preference: ${targetLang}`;
 
-    console.log(`Sending prompt to Gemini API for language: ${targetLang} in ${commitFormat} format.`);
+    console.log(`Sending prompt using [${selectedProvider}] with model [${selectedModel}] for language [${targetLang}].`);
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
-      contents: userPrompt,
-      config: {
-        systemInstruction,
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            commitMessage: {
-              type: Type.STRING,
-              description: "The generated Git commit header/subject line matched to standard/conventional style rules."
+    let rawData: {
+      commitMessage: string;
+      commitDescription: string;
+      prTitle: string;
+      prDescription: string;
+      commitType: string;
+    };
+
+    if (selectedProvider === "gemini") {
+      // Obtain Gemini client lazily
+      const ai = getGeminiClient();
+      const response = await ai.models.generateContent({
+        model: selectedModel,
+        contents: userPrompt,
+        config: {
+          systemInstruction,
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              commitMessage: {
+                type: Type.STRING,
+                description: "The generated Git commit header/subject line matched to standard/conventional style rules."
+              },
+              commitDescription: {
+                type: Type.STRING,
+                description: "The body of the Git commit message matching the description length requirements."
+              },
+              prTitle: {
+                type: Type.STRING,
+                description: "The generated concise Pull Request title."
+              },
+              prDescription: {
+                type: Type.STRING,
+                description: "The complete, highly structured Markdown PR content including Summary, Changes Made, Testing Notes, and Impact headings."
+              },
+              commitType: {
+                type: Type.STRING,
+                description: "The classified type (Feature, Fix, Refactor, Documentation, Test, Style, Chore)."
+              }
             },
-            commitDescription: {
-              type: Type.STRING,
-              description: "The body of the Git commit message matching the description length requirements."
-            },
-            prTitle: {
-              type: Type.STRING,
-              description: "The generated concise Pull Request title."
-            },
-            prDescription: {
-              type: Type.STRING,
-              description: "The complete, highly structured Markdown PR content including Summary, Changes Made, Testing Notes, and Impact headings."
-            },
-            commitType: {
-              type: Type.STRING,
-              description: "The classified type (Feature, Fix, Refactor, Documentation, Test, Style, Chore)."
-            }
+            required: ["commitMessage", "commitDescription", "prTitle", "prDescription", "commitType"],
           },
-          required: ["commitMessage", "commitDescription", "prTitle", "prDescription", "commitType"],
         },
-      },
-    });
+      });
 
-    const resultText = response.text;
-    if (!resultText) {
-      throw new Error("No response output returned from the Gemini API.");
+      const resultText = response.text;
+      if (!resultText) {
+        throw new Error(`No response output returned from the Gemini API model ${selectedModel}.`);
+      }
+      rawData = JSON.parse(resultText.trim());
+
+    } else if (selectedProvider === "openai") {
+      const openAiKey = process.env.OPENAI_API_KEY;
+      if (!openAiKey || openAiKey === "MY_OPENAI_API_KEY" || openAiKey === "") {
+        throw new Error("OPENAI_API_KEY is missing or unconfigured. Please configure your OpenAI API Key in the Settings > Secrets panel of Google AI Studio.");
+      }
+
+      console.log(`Contacting OpenAI API endpoint for model: ${selectedModel}`);
+      const openaiResponse = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${openAiKey}`
+        },
+        body: JSON.stringify({
+          model: selectedModel,
+          response_format: { type: "json_object" },
+          messages: [
+            { 
+              role: "system", 
+              content: systemInstruction + "\n\nYou MUST respond strictly with a valid JSON object matching this schema:\n{\n  \"commitMessage\": \"The commit header string\",\n  \"commitDescription\": \"The commit body description string\",\n  \"prTitle\": \"The pull request title\",\n  \"prDescription\": \"The pull request markdown body\",\n  \"commitType\": \"Feature/Fix/Refactor/Documentation/Test/Style/Chore\"\n}" 
+            },
+            { role: "user", content: userPrompt }
+          ],
+          temperature: 0.2
+        })
+      });
+
+      if (!openaiResponse.ok) {
+        const errorText = await openaiResponse.text();
+        throw new Error(`OpenAI API request failed: ${openaiResponse.statusText} (${openaiResponse.status}) - ${errorText}`);
+      }
+
+      const openAiData = await openaiResponse.json();
+      const resultText = openAiData.choices?.[0]?.message?.content;
+      if (!resultText) {
+        throw new Error("No response content returned from the OpenAI API.");
+      }
+      rawData = parseJsonResponse(resultText);
+
+    } else if (selectedProvider === "claude") {
+      const anthropicKey = process.env.ANTHROPIC_API_KEY;
+      if (!anthropicKey || anthropicKey === "MY_ANTHROPIC_API_KEY" || anthropicKey === "") {
+        throw new Error("ANTHROPIC_API_KEY is missing or unconfigured. Please configure your Anthropic API Key in the Settings > Secrets panel of Google AI Studio.");
+      }
+
+      console.log(`Contacting Anthropic Claude API endpoint for model: ${selectedModel}`);
+      const claudeResponse = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": anthropicKey,
+          "anthropic-version": "2023-06-01"
+        },
+        body: JSON.stringify({
+          model: selectedModel,
+          max_tokens: 4000,
+          messages: [
+            { 
+              role: "user", 
+              content: `${systemInstruction}\n\n${userPrompt}\n\nYou MUST respond strictly with a valid JSON object matching this schema:\n{\n  \"commitMessage\": \"The commit header string\",\n  \"commitDescription\": \"The commit body description string\",\n  \"prTitle\": \"The pull request title\",\n  \"prDescription\": \"The pull request markdown body\",\n  \"commitType\": \"Feature/Fix/Refactor/Documentation/Test/Style/Chore\"\n}\n\nDo not include any other markdown wrapper, introduction, or text outside the raw JSON.` 
+            }
+          ],
+          temperature: 0.2
+        })
+      });
+
+      if (!claudeResponse.ok) {
+        const errorText = await claudeResponse.text();
+        throw new Error(`Anthropic Claude API request failed: ${claudeResponse.statusText} (${claudeResponse.status}) - ${errorText}`);
+      }
+
+      const claudeData = await claudeResponse.json();
+      const resultText = claudeData.content?.[0]?.text;
+      if (!resultText) {
+        throw new Error("No response content returned from the Anthropic Claude API.");
+      }
+      rawData = parseJsonResponse(resultText);
+
+    } else if (selectedProvider === "local") {
+      const localUrl = process.env.LOCAL_LLM_URL || "http://localhost:11434/v1";
+      const targetUrl = localUrl.endsWith("/") ? `${localUrl}chat/completions` : `${localUrl}/chat/completions`;
+
+      console.log(`Forwarding log payload to local LLM node: ${targetUrl} using model: ${selectedModel}`);
+      const localResponse = await fetch(targetUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          model: selectedModel,
+          messages: [
+            { 
+              role: "system", 
+              content: systemInstruction + "\n\nYou MUST respond strictly with a valid JSON object matching this schema:\n{\n  \"commitMessage\": \"The commit header string\",\n  \"commitDescription\": \"The commit body description string\",\n  \"prTitle\": \"The pull request title\",\n  \"prDescription\": \"The pull request markdown body\",\n  \"commitType\": \"Feature/Fix/Refactor/Documentation/Test/Style/Chore\"\n}" 
+            },
+            { role: "user", content: userPrompt }
+          ],
+          temperature: 0.2
+        })
+      });
+
+      if (!localResponse.ok) {
+        const errorText = await localResponse.text();
+        throw new Error(`Local LLM API request failed at ${targetUrl}: ${localResponse.statusText}. Please verify that your local service (e.g. Ollama) is running and accessible.`);
+      }
+
+      const localData = await localResponse.json();
+      const resultText = localData.choices?.[0]?.message?.content;
+      if (!resultText) {
+        throw new Error("No response content returned from the Local LLM service.");
+      }
+      rawData = parseJsonResponse(resultText);
+
+    } else {
+      throw new Error(`Unsupported multi-provider channel: ${selectedProvider}`);
     }
-
-    const rawData = JSON.parse(resultText.trim());
 
     // Insert into database
     const db = await dbPromise;
     const createdAt = new Date().toISOString();
     const insertResult = await db.run(
-      `INSERT INTO generations (createdAt, inputText, commitMessage, commitDescription, prTitle, prDescription, language, commitType)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO generations (createdAt, inputText, commitMessage, commitDescription, prTitle, prDescription, language, commitType, provider, model)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         createdAt,
         inputText,
@@ -181,6 +367,8 @@ Language Preference: ${targetLang}`;
         rawData.prDescription,
         targetLang,
         rawData.commitType,
+        selectedProvider,
+        selectedModel,
       ]
     );
 
@@ -194,6 +382,8 @@ Language Preference: ${targetLang}`;
       prDescription: rawData.prDescription,
       language: targetLang,
       commitType: rawData.commitType,
+      provider: selectedProvider,
+      model: selectedModel,
     };
 
     res.json({ success: true, data: savedRecord });

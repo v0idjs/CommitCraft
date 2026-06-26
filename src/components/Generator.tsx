@@ -14,8 +14,9 @@ import {
   HelpCircle,
   Code
 } from "lucide-react";
-import { CommitFormat, DescriptionLength, GenLanguage, HistoryItem, ConfigStatus } from "../types";
+import { CommitFormat, DescriptionLength, GenLanguage, HistoryItem, ConfigStatus, ProviderType } from "../types";
 import { Markdown } from "./Markdown";
+import { PROVIDER_MODELS } from "./SettingsView";
 
 interface GeneratorProps {
   config: ConfigStatus | null;
@@ -23,6 +24,8 @@ interface GeneratorProps {
   defaultFormat: CommitFormat;
   defaultLength: DescriptionLength;
   defaultLanguage: GenLanguage;
+  defaultProvider: ProviderType;
+  defaultModel: string;
 }
 
 // Sample presets for users to quickly pre-fill and verify CommitCraft performance
@@ -46,7 +49,9 @@ export function Generator({
   onGenerationComplete, 
   defaultFormat, 
   defaultLength, 
-  defaultLanguage 
+  defaultLanguage,
+  defaultProvider,
+  defaultModel
 }: GeneratorProps) {
   
   // User Configuration preferences
@@ -54,6 +59,38 @@ export function Generator({
   const [format, setFormat] = useState<CommitFormat>(defaultFormat);
   const [length, setLength] = useState<DescriptionLength>(defaultLength);
   const [language, setLanguage] = useState<GenLanguage>(defaultLanguage);
+  const [provider, setProvider] = useState<ProviderType>(defaultProvider);
+  const [model, setModel] = useState<string>(defaultModel);
+
+  // Synchronize state with default settings when they load
+  React.useEffect(() => {
+    setFormat(defaultFormat);
+  }, [defaultFormat]);
+
+  React.useEffect(() => {
+    setLength(defaultLength);
+  }, [defaultLength]);
+
+  React.useEffect(() => {
+    setLanguage(defaultLanguage);
+  }, [defaultLanguage]);
+
+  React.useEffect(() => {
+    setProvider(defaultProvider);
+  }, [defaultProvider]);
+
+  React.useEffect(() => {
+    setModel(defaultModel);
+  }, [defaultModel]);
+
+  // Synchronize model list with provider state
+  const handleProviderChange = (newProvider: ProviderType) => {
+    setProvider(newProvider);
+    const available = PROVIDER_MODELS[newProvider];
+    if (available && available.length > 0) {
+      setModel(available[0].id);
+    }
+  };
 
   // Run states
   const [isLoading, setIsLoading] = useState(false);
@@ -116,7 +153,9 @@ export function Generator({
           inputText: inputText.trim(),
           format,
           length,
-          language
+          language,
+          provider,
+          model
         }),
       });
 
@@ -176,7 +215,7 @@ export function Generator({
         <div className="relative max-w-3xl">
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-none bg-[#141414] text-white text-[10px] font-mono font-bold uppercase tracking-widest mb-4">
             <Sparkles className="w-3.5 h-3.5 animate-spin" style={{ animationDuration: '6s' }} />
-            Powered by Google Gemini 3.5 Flash
+            Routed via {provider === "gemini" ? "Google Gemini" : provider === "openai" ? "OpenAI" : provider === "claude" ? "Anthropic Claude" : "Local Node"} ({model})
           </div>
           <h1 className="text-2xl sm:text-3.5xl font-extrabold tracking-tight text-[#141414] italic font-serif leading-tight">
             Elevate Your Github History
@@ -332,6 +371,43 @@ Updated user model password schemas...`}
                     {languagesList.map((lang) => (
                       <option key={lang} value={lang}>
                         {lang}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Current Generator Provider selector */}
+                <div className="space-y-1.5">
+                  <label htmlFor="provider-select" className="text-[10px] font-bold uppercase tracking-wider text-[#141414]/60 block">
+                    AI Provider
+                  </label>
+                  <select
+                    id="provider-select"
+                    value={provider}
+                    onChange={(e) => handleProviderChange(e.target.value as ProviderType)}
+                    className="w-full text-xs p-2 bg-white border border-[#141414] text-[#141414] rounded-none font-bold uppercase outline-none focus:outline-hidden"
+                  >
+                    <option value="gemini">Google Gemini</option>
+                    <option value="openai">OpenAI GPT-4o</option>
+                    <option value="claude">Anthropic Claude</option>
+                    <option value="local">Local LLM</option>
+                  </select>
+                </div>
+
+                {/* Current Generator Model selector */}
+                <div className="space-y-1.5">
+                  <label htmlFor="model-select" className="text-[10px] font-bold uppercase tracking-wider text-[#141414]/60 block">
+                    AI Model
+                  </label>
+                  <select
+                    id="model-select"
+                    value={model}
+                    onChange={(e) => setModel(e.target.value)}
+                    className="w-full text-xs p-2 bg-white border border-[#141414] text-[#141414] rounded-none font-bold uppercase outline-none focus:outline-hidden"
+                  >
+                    {(PROVIDER_MODELS[provider] || []).map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.label}
                       </option>
                     ))}
                   </select>

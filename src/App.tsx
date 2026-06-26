@@ -5,7 +5,7 @@ import { Generator } from "./components/Generator";
 import { HistoryList } from "./components/HistoryList";
 import { SettingsView } from "./components/SettingsView";
 import { AboutView } from "./components/AboutView";
-import { ConfigStatus, CommitFormat, DescriptionLength, GenLanguage } from "./types";
+import { ConfigStatus, CommitFormat, DescriptionLength, GenLanguage, ProviderType } from "./types";
 import { Sparkles, Terminal, Database, Cpu, HelpCircle } from "lucide-react";
 
 export default function App() {
@@ -19,6 +19,8 @@ export default function App() {
   const [defaultFormat, setDefaultFormat] = useState<CommitFormat>("conventional");
   const [defaultLength, setDefaultLength] = useState<DescriptionLength>("medium");
   const [defaultLanguage, setDefaultLanguage] = useState<GenLanguage>("English");
+  const [defaultProvider, setDefaultProvider] = useState<ProviderType>("gemini");
+  const [defaultModel, setDefaultModel] = useState<string>("gemini-3.5-flash");
 
   useEffect(() => {
     fetchConfig();
@@ -40,10 +42,14 @@ export default function App() {
     const savedFormat = localStorage.getItem("commitcraft_default_format") as CommitFormat;
     const savedLength = localStorage.getItem("commitcraft_default_length") as DescriptionLength;
     const savedLanguage = localStorage.getItem("commitcraft_default_language") as GenLanguage;
+    const savedProvider = localStorage.getItem("commitcraft_default_provider") as ProviderType;
+    const savedModel = localStorage.getItem("commitcraft_default_model");
 
     if (savedFormat) setDefaultFormat(savedFormat);
     if (savedLength) setDefaultLength(savedLength);
     if (savedLanguage) setDefaultLanguage(savedLanguage);
+    if (savedProvider) setDefaultProvider(savedProvider);
+    if (savedModel) setDefaultModel(savedModel);
   };
 
   const handleGenerationComplete = () => {
@@ -66,6 +72,8 @@ export default function App() {
               defaultFormat={defaultFormat}
               defaultLength={defaultLength}
               defaultLanguage={defaultLanguage}
+              defaultProvider={defaultProvider}
+              defaultModel={defaultModel}
             />
           )}
 
@@ -82,6 +90,10 @@ export default function App() {
               setDefaultLength={setDefaultLength}
               defaultLanguage={defaultLanguage}
               setDefaultLanguage={setDefaultLanguage}
+              defaultProvider={defaultProvider}
+              setDefaultProvider={setDefaultProvider}
+              defaultModel={defaultModel}
+              setDefaultModel={setDefaultModel}
             />
           )}
 

@@ -15,7 +15,9 @@ import {
 
 export function AboutView() {
   const contributors = [
-    { name: "V0idjs", role: "Core Engine Compiler Architect", avatar: "VJ" },
+    { name: "Sora Takahashi", role: "AI Prompt Synthesis lead", avatar: "ST" },
+    { name: "Amelia Carter", role: "Core Engine Compiler Architect", avatar: "AC" },
+    { name: "Devon Miller", role: "Technical Writer & Documentation Specialist", avatar: "DM" },
     { name: "You!", role: "Community Open Source Contributor", avatar: "CC" }
   ];
 

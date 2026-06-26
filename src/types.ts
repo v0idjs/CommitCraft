@@ -1,11 +1,14 @@
 export type CommitFormat = "conventional" | "standard";
 export type DescriptionLength = "short" | "medium" | "detailed";
 export type GenLanguage = "English" | "French" | "Spanish" | "German" | "Arabic";
+export type ProviderType = "gemini" | "openai" | "claude" | "local";
 
 export interface GenerationConfig {
   format: CommitFormat;
   length: DescriptionLength;
   language: GenLanguage;
+  provider: ProviderType;
+  model: string;
 }
 
 export interface HistoryItem {
@@ -18,9 +21,14 @@ export interface HistoryItem {
   prDescription: string;
   language: GenLanguage;
   commitType: string;
+  provider?: ProviderType;
+  model?: string;
 }
 
 export interface ConfigStatus {
   hasApiKey: boolean;
+  hasOpenAiKey?: boolean;
+  hasAnthropicKey?: boolean;
+  localLlmUrl?: string;
   appUrl: string;
 }

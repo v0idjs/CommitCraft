@@ -226,6 +226,12 @@ export function HistoryList({ refreshTrigger }: HistoryListProps) {
                           {item.language}
                         </span>
 
+                        {item.provider && (
+                          <span className="px-1.5 py-0.5 rounded-none text-[9px] bg-[#141414] border border-[#141414] text-[#EBEAE7] font-mono font-bold uppercase tracking-wide">
+                            {item.provider}: {item.model}
+                          </span>
+                        )}
+
                         <div className="flex items-center gap-1 text-[#141414]/60 text-[10px] font-mono uppercase">
                           <Clock className="w-3 h-3" />
                           <span>{formatTime(item.createdAt)}</span>
